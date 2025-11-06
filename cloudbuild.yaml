@@ -34,21 +34,7 @@ steps:
         cat helm/myapp/values.yaml
     id: 'update-values'
 
-  # Step 4: Get GKE credentials
-  - name: 'gcr.io/cloud-builders/gcloud'
-    args:
-      - 'container'
-      - 'clusters'
-      - 'get-credentials'
-      - '${_CLUSTER_NAME}'
-      - '--region'
-      - '${_REGION}'
-      - '--project'
-      - 'thematic-land-477215-a5'
-    id: 'get-credentials'
-    waitFor: ['push-image']
-
-  # Step 5: Deploy Helm chart via Jumpbox VM
+  # Step 4: Deploy Helm chart via Jumpbox VM
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
     args:
@@ -104,38 +90,41 @@ steps:
             '
           "
     id: 'helm-deploy'
-    waitFor: ['get-credentials', 'update-values']
+    waitFor: ['push-image', 'update-values']
 
-  # Step 6: Verify deployment
-  - name: 'gcr.io/cloud-builders/kubectl'
-    env:
-      - 'CLOUDSDK_COMPUTE_REGION=${_REGION}'
-      - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER_NAME}'
+  # Step 5: Verify deployment via Jumpbox VM
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
     args:
-      - 'get'
-      - 'all'
-      - '-n'
-      - '${_NAMESPACE}'
-      - '-l'
-      - 'app=myapp'
+      - '-c'
+      - |
+        echo "Verifying deployment via Jumpbox VM..."
+        gcloud compute ssh vij1542044@jumpbox-cluster \
+          --zone=asia-southeast1-c \
+          --project=thematic-land-477215-a5 \
+          --quiet \
+          --ssh-flag="-o StrictHostKeyChecking=no" \
+          --ssh-flag="-o UserKnownHostsFile=/dev/null" \
+          --command "
+            sudo bash -c '
+              echo \"=== Verifying Deployment ===\"
+              kubectl get all -n ${_NAMESPACE} -l app=myapp --kubeconfig /root/.kube/config
+              
+              echo \"\"
+              echo \"=== Service Details ===\"
+              kubectl get svc myapp-service -n ${_NAMESPACE} -o wide --kubeconfig /root/.kube/config
+              
+              echo \"\"
+              echo \"=== Pod Status ===\"
+              kubectl get pods -n ${_NAMESPACE} -l app=myapp --kubeconfig /root/.kube/config
+              
+              echo \"\"
+              echo \"=== LoadBalancer IP (if available) ===\"
+              kubectl get svc myapp-service -n ${_NAMESPACE} -o jsonpath=\"{.status.loadBalancer.ingress[0].ip}\" --kubeconfig /root/.kube/config || echo \"LoadBalancer IP not yet assigned\"
+            '
+          "
     id: 'verify-deployment'
     waitFor: ['helm-deploy']
-
-  # Step 7: Get LoadBalancer IP
-  - name: 'gcr.io/cloud-builders/kubectl'
-    env:
-      - 'CLOUDSDK_COMPUTE_REGION=${_REGION}'
-      - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER_NAME}'
-    args:
-      - 'get'
-      - 'svc'
-      - 'myapp-service'
-      - '-n'
-      - '${_NAMESPACE}'
-      - '-o'
-      - 'wide'
-    id: 'get-service'
-    waitFor: ['verify-deployment']
 
 options:
   logging: CLOUD_LOGGING_ONLY
