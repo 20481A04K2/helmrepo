@@ -59,8 +59,8 @@ steps:
           --zone=asia-southeast1-c \
           --project=thematic-land-477215-a5 \
           --quiet \
-          --ssh-flag="-o StrictHostKeyChecking=no" \
-          --ssh-flag="-o UserKnownHostsFile=/dev/null"
+          --scp-flag="-o StrictHostKeyChecking=no" \
+          --scp-flag="-o UserKnownHostsFile=/dev/null"
 
         echo "Deploying Helm chart via Jumpbox VM..."
         gcloud compute ssh vij1542044@jumpbox-cluster \
