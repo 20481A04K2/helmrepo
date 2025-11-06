@@ -34,7 +34,19 @@ steps:
         cat helm/myapp/values.yaml
     id: 'update-values'
 
- 
+  # Step 4: Get cluster credentials (for regional cluster)
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'container'
+      - 'clusters'
+      - 'get-credentials'
+      - '${_CLUSTER_NAME}'
+      - '--region'
+      - '${_REGION}'
+      - '--project'
+      - '$PROJECT_ID'
+    id: 'get-credentials'
+    waitFor: ['push-image']
 
   # Step 5: Deploy via Jumpbox VM
   - name: 'gcr.io/cloud-builders/gcloud'
