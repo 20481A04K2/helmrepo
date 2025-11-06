@@ -22,7 +22,7 @@ steps:
     id: 'push-image'
     waitFor: ['build-image']
 
-  # Step 3: Update values.yaml
+  # Step 3: Update values.yaml dynamically
   - name: 'ubuntu'
     args:
       - 'bash'
@@ -34,7 +34,7 @@ steps:
         cat helm/myapp/values.yaml
     id: 'update-values'
 
-  # Step 4: Get cluster credentials (for regional cluster)
+  # Step 4: Get GKE credentials
   - name: 'gcr.io/cloud-builders/gcloud'
     args:
       - 'container'
@@ -48,21 +48,21 @@ steps:
     id: 'get-credentials'
     waitFor: ['push-image']
 
-  # Step 5: Deploy via Jumpbox VM
+  # Step 5: Deploy Helm chart via Jumpbox VM
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         echo "Copying Helm chart to Jumpbox VM..."
-        gcloud compute scp --recurse helm/myapp vij1542044@jumpbox-cluster:/tmp/ \
+        gcloud compute scp --recurse helm/myapp vij1542044@jumpbox-cluster:/tmp/helm-myapp \
           --zone=asia-southeast1-c \
           --project=thematic-land-477215-a5 \
           --quiet \
           --ssh-flag="-o StrictHostKeyChecking=no" \
           --ssh-flag="-o UserKnownHostsFile=/dev/null"
 
-        echo "Installing Helm and deploying via Jumpbox VM..."
+        echo "Deploying Helm chart via Jumpbox VM..."
         gcloud compute ssh vij1542044@jumpbox-cluster \
           --zone=asia-southeast1-c \
           --project=thematic-land-477215-a5 \
@@ -71,16 +71,17 @@ steps:
           --ssh-flag="-o UserKnownHostsFile=/dev/null" \
           --command "
             set -e
-
-            echo 'Switching to root user...'
             sudo bash -c '
               echo Installing Helm...
               curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
               echo Preparing Helm directory...
               mkdir -p /root/helm/myapp
-              cp -r /tmp/myapp/* /root/helm/myapp/
+              cp -r /tmp/helm-myapp/* /root/helm/myapp/
               chown -R root:root /root/helm/myapp
+
+              echo Checking chart structure:
+              ls -R /root/helm/myapp
 
               echo Helm version:
               helm version
@@ -104,9 +105,6 @@ steps:
           "
     id: 'helm-deploy'
     waitFor: ['get-credentials', 'update-values']
-
-
-
 
   # Step 6: Verify deployment
   - name: 'gcr.io/cloud-builders/kubectl'
