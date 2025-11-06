@@ -10,7 +10,7 @@ steps:
     args:
       - 'build'
       - '-t'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/helm-demo-repo/myapp:$SHORT_SHA'
+      - 'asia-southeast1-docker.pkg.dev/thematic-land-477215-a5/helm-demo-repo/myapp:$SHORT_SHA'
       - '.'
     id: 'build-image'
 
@@ -18,7 +18,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/helm-demo-repo/myapp:$SHORT_SHA'
+      - 'asia-southeast1-docker.pkg.dev/thematic-land-477215-a5/helm-demo-repo/myapp:$SHORT_SHA'
     id: 'push-image'
     waitFor: ['build-image']
 
@@ -28,8 +28,8 @@ steps:
       - 'bash'
       - '-c'
       - |
-        echo "Updating values.yaml with PROJECT_ID: $PROJECT_ID"
-        sed -i "s/PROJECT_ID/$PROJECT_ID/g" helm/myapp/values.yaml
+        echo "Updating values.yaml with PROJECT_ID: thematic-land-477215-a5"
+        sed -i "s/PROJECT_ID/thematic-land-477215-a5/g" helm/myapp/values.yaml
         echo "Updated values.yaml:"
         cat helm/myapp/values.yaml
     id: 'update-values'
@@ -44,7 +44,7 @@ steps:
       - '--region'
       - '${_REGION}'
       - '--project'
-      - '$PROJECT_ID'
+      - 'thematic-land-477215-a5'
     id: 'get-credentials'
     waitFor: ['push-image']
 
@@ -56,7 +56,12 @@ steps:
       - |
         echo "Installing Helm and deploying via Jumpbox VM..."
         gcloud compute ssh root@jumpbox-cluster \
-          --zone=asia-southeast1-c --quiet --command "
+          --zone=asia-southeast1-c \
+          --project=thematic-land-477215-a5 \
+          --quiet \
+          --ssh-flag="-o StrictHostKeyChecking=no" \
+          --ssh-flag="-o UserKnownHostsFile=/dev/null" \
+          --command "
             set -e
             echo 'Installing Helm...'
             curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
@@ -71,7 +76,7 @@ steps:
               --namespace ${_NAMESPACE} \
               --wait \
               --timeout 10m \
-              --set image.repository=${_REGION}-docker.pkg.dev/$PROJECT_ID/helm-demo-repo/myapp \
+              --set image.repository=asia-southeast1-docker.pkg.dev/thematic-land-477215-a5/helm-demo-repo/myapp \
               --set image.tag=$SHORT_SHA \
               --set env.APP_VERSION=v1.0.0-$SHORT_SHA \
               --kubeconfig /root/.kube/config \
@@ -114,7 +119,6 @@ steps:
     waitFor: ['verify-deployment']
 
 options:
- 
   logging: CLOUD_LOGGING_ONLY
   dynamic_substitutions: true
 
