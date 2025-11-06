@@ -64,30 +64,34 @@ steps:
           --command "
             set -e
 
-            sudo su - root
-            echo 'Installing Helm...'
-            curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-            echo 'Helm version:'
-            helm version
+            echo 'Switching to root user...'
+            sudo bash -c '
+              echo Installing Helm...
+              curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-            echo 'Deploying Helm chart...'
-            sudo cd /root
-            helm upgrade ${_HELM_RELEASE_NAME} /root/helm/myapp \
-              --install \
-              --create-namespace \
-              --namespace ${_NAMESPACE} \
-              --wait \
-              --timeout 10m \
-              --set image.repository=asia-southeast1-docker.pkg.dev/thematic-land-477215-a5/helm-demo-repo/myapp \
-              --set image.tag=$SHORT_SHA \
-              --set env.APP_VERSION=v1.0.0-$SHORT_SHA \
-              --kubeconfig /root/.kube/config \
-              --debug
+              echo Helm version:
+              helm version
 
-            echo 'Deployment complete!'
+              echo Deploying Helm chart...
+              cd /root/helm/myapp
+              helm upgrade ${_HELM_RELEASE_NAME} . \
+                --install \
+                --create-namespace \
+                --namespace ${_NAMESPACE} \
+                --wait \
+                --timeout 10m \
+                --set image.repository=asia-southeast1-docker.pkg.dev/thematic-land-477215-a5/helm-demo-repo/myapp \
+                --set image.tag=$SHORT_SHA \
+                --set env.APP_VERSION=v1.0.0-$SHORT_SHA \
+                --kubeconfig /root/.kube/config \
+                --debug
+
+              echo Deployment complete!
+            '
           "
     id: 'helm-deploy'
     waitFor: ['get-credentials', 'update-values']
+
 
   # Step 6: Verify deployment
   - name: 'gcr.io/cloud-builders/kubectl'
