@@ -71,7 +71,7 @@ steps:
             helm version
 
             echo 'Deploying Helm chart...'
-            cd /root
+            sudo cd /root
             helm upgrade ${_HELM_RELEASE_NAME} /root/helm/myapp \
               --install \
               --create-namespace \
