@@ -34,79 +34,103 @@ steps:
         cat helm/myapp/values.yaml
     id: 'update-values'
 
-  # Step 4: Get GKE credentials
-  - name: 'gcr.io/cloud-builders/gcloud'
-    args:
-      - 'container'
-      - 'clusters'
-      - 'get-credentials'
-      - '${_CLUSTER_NAME}'
-      - '--region'
-      - '${_REGION}'
-      - '--project'
-      - 'thematic-land-477215-a5'
-      - '--internal-ip'
-    id: 'get-credentials'
-    waitFor: ['push-image']
-
-  # Step 5: Install Helm
+  # Step 4: Deploy Helm chart via Jumpbox VM
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-    id: 'install-helm'
-    waitFor: ['get-credentials']
+        echo "Copying Helm chart to Jumpbox VM..."
+        gcloud compute scp --recurse helm/myapp vij1542044@jumpbox-cluster:/tmp/helm-myapp \
+          --zone=asia-southeast1-c \
+          --project=thematic-land-477215-a5 \
+          --quiet \
+          --scp-flag="-o StrictHostKeyChecking=no" \
+          --scp-flag="-o UserKnownHostsFile=/dev/null"
 
-  # Step 6: Deploy with Helm - DIRECTLY from Worker Pool
-  - name: 'gcr.io/cloud-builders/gcloud'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        /usr/local/bin/helm upgrade ${_HELM_RELEASE_NAME} helm/myapp \
-          --install \
-          --create-namespace \
-          --namespace ${_NAMESPACE} \
-          --wait \
-          --timeout 10m \
-          --set image.repository=asia-southeast1-docker.pkg.dev/thematic-land-477215-a5/helm-demo-repo/myapp \
-          --set image.tag=$SHORT_SHA \
-          --set env.APP_VERSION=v1.0.0-$SHORT_SHA \
-          --debug
+        echo "Deploying Helm chart via Jumpbox VM..."
+        gcloud compute ssh vij1542044@jumpbox-cluster \
+          --zone=asia-southeast1-c \
+          --project=thematic-land-477215-a5 \
+          --quiet \
+          --ssh-flag="-o StrictHostKeyChecking=no" \
+          --ssh-flag="-o UserKnownHostsFile=/dev/null" \
+          --command "
+            set -e
+            sudo bash -c '
+              echo Installing Helm...
+              curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+              echo Preparing Helm directory...
+              mkdir -p /root/helm/myapp
+              cp -r /tmp/helm-myapp/* /root/helm/myapp/
+              chown -R root:root /root/helm/myapp
+
+              echo Checking chart structure:
+              ls -R /root/helm/myapp
+
+              echo Helm version:
+              helm version
+
+              echo Deploying Helm chart...
+              cd /root/helm/myapp
+              helm upgrade ${_HELM_RELEASE_NAME} . \
+                --install \
+                --create-namespace \
+                --namespace ${_NAMESPACE} \
+                --wait \
+                --timeout 10m \
+                --set image.repository=asia-southeast1-docker.pkg.dev/thematic-land-477215-a5/helm-demo-repo/myapp \
+                --set image.tag=$SHORT_SHA \
+                --set env.APP_VERSION=v1.0.0-$SHORT_SHA \
+                --kubeconfig /root/.kube/config \
+                --debug
+
+              echo Deployment complete!
+            '
+          "
     id: 'helm-deploy'
-    waitFor: ['install-helm', 'update-values']
+    waitFor: ['push-image', 'update-values']
 
-  # Step 7: Verify deployment
-  - name: 'gcr.io/cloud-builders/kubectl'
+  # Step 5: Verify deployment via Jumpbox VM
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
     args:
-      - 'get'
-      - 'all'
-      - '-n'
-      - '${_NAMESPACE}'
-      - '-l'
-      - 'app=myapp'
+      - '-c'
+      - |
+        echo "Verifying deployment via Jumpbox VM..."
+        gcloud compute ssh vij1542044@jumpbox-cluster \
+          --zone=asia-southeast1-c \
+          --project=thematic-land-477215-a5 \
+          --quiet \
+          --ssh-flag="-o StrictHostKeyChecking=no" \
+          --ssh-flag="-o UserKnownHostsFile=/dev/null" \
+          --command "
+            sudo bash -c '
+              echo \"=== Verifying Deployment ===\"
+              kubectl get all -n ${_NAMESPACE} -l app=myapp --kubeconfig /root/.kube/config
+              
+              echo \"\"
+              echo \"=== Service Details ===\"
+              kubectl get svc myapp-service -n ${_NAMESPACE} -o wide --kubeconfig /root/.kube/config
+              
+              echo \"\"
+              echo \"=== Pod Status ===\"
+              kubectl get pods -n ${_NAMESPACE} -l app=myapp --kubeconfig /root/.kube/config
+              
+              echo \"\"
+              echo \"=== LoadBalancer IP (if available) ===\"
+              kubectl get svc myapp-service -n ${_NAMESPACE} -o jsonpath=\"{.status.loadBalancer.ingress[0].ip}\" --kubeconfig /root/.kube/config || echo \"LoadBalancer IP not yet assigned\"
+            '
+          "
     id: 'verify-deployment'
     waitFor: ['helm-deploy']
 
-  # Step 8: Get LoadBalancer IP
-  - name: 'gcr.io/cloud-builders/kubectl'
-    args:
-      - 'get'
-      - 'svc'
-      - 'myapp-service'
-      - '-n'
-      - '${_NAMESPACE}'
-      - '-o'
-      - 'wide'
-    id: 'get-service'
-    waitFor: ['verify-deployment']
-
 options:
   logging: CLOUD_LOGGING_ONLY
-  pool:
-    name: 'projects/thematic-land-477215-a5/locations/asia-southeast1/workerPools/wp'
+  machineType: 'E2_HIGHCPU_8'
   dynamic_substitutions: true
 
 timeout: '1800s'
+
+
