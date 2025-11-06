@@ -1,0 +1,30 @@
+# Default values for myapp
+
+replicaCount: 2
+
+image:
+  repository: us-central1-docker.pkg.dev/PROJECT_ID/helm-demo-repo/myapp
+  tag: "latest"
+  pullPolicy: Always
+
+service:
+  type: LoadBalancer
+  port: 80
+  targetPort: 8080
+
+env:
+  APP_VERSION: "v1.0.0"
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80

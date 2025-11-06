@@ -1,0 +1,129 @@
+substitutions:
+  _REGION: us-central1
+  _ZONE: us-central1-a
+  _CLUSTER_NAME: helm-demo-cluster
+  _HELM_RELEASE_NAME: myapp-release
+  _NAMESPACE: default
+
+steps:
+  # Step 0: Build Helm Builder Image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/helm'
+      - './helm-builder'
+    id: 'build-helm-builder'
+
+  # Step 1: Build Application Docker Image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/helm-demo-repo/myapp:$SHORT_SHA'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/helm-demo-repo/myapp:latest'
+      - '.'
+    id: 'build-image'
+    waitFor: ['-']
+
+  # Step 2: Push Application Image (SHA Tag)
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/helm-demo-repo/myapp:$SHORT_SHA'
+    id: 'push-image-sha'
+    waitFor: ['build-image']
+
+  # Step 3: Push Application Image (Latest Tag)
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/helm-demo-repo/myapp:latest'
+    id: 'push-image-latest'
+    waitFor: ['build-image']
+
+  # Step 4: Update values.yaml with PROJECT_ID
+  - name: 'ubuntu'
+    args:
+      - 'bash'
+      - '-c'
+      - |
+        echo "Updating values.yaml with PROJECT_ID: $PROJECT_ID"
+        sed -i "s/PROJECT_ID/$PROJECT_ID/g" helm/myapp/values.yaml
+        echo "Updated values.yaml:"
+        cat helm/myapp/values.yaml
+    id: 'update-values'
+    waitFor: ['-']
+
+  # Step 5: Get GKE Cluster Credentials
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'container'
+      - 'clusters'
+      - 'get-credentials'
+      - '${_CLUSTER_NAME}'
+      - '--zone=${_ZONE}'
+      - '--project=$PROJECT_ID'
+    id: 'get-credentials'
+    waitFor: ['-']
+
+  # Step 6: Deploy Using Helm
+  - name: 'gcr.io/$PROJECT_ID/helm'
+    env:
+      - 'CLOUDSDK_COMPUTE_ZONE=${_ZONE}'
+      - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER_NAME}'
+    args:
+      - 'upgrade'
+      - '${_HELM_RELEASE_NAME}'
+      - './helm/myapp'
+      - '--install'
+      - '--create-namespace'
+      - '--namespace=${_NAMESPACE}'
+      - '--wait'
+      - '--timeout=10m'
+      - '--set'
+      - 'image.tag=$SHORT_SHA'
+      - '--set'
+      - 'env.APP_VERSION=v1.0.0-$SHORT_SHA'
+      - '--debug'
+    id: 'helm-deploy'
+    waitFor: ['build-helm-builder', 'push-image-sha', 'push-image-latest', 'update-values', 'get-credentials']
+
+  # Step 7: Verify Deployment (FIXED - Added env variables)
+  - name: 'gcr.io/cloud-builders/kubectl'
+    env:
+      - 'CLOUDSDK_COMPUTE_ZONE=${_ZONE}'
+      - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER_NAME}'
+    args:
+      - 'get'
+      - 'all'
+      - '-n'
+      - '${_NAMESPACE}'
+      - '-l'
+      - 'app=myapp'
+    id: 'verify-deployment'
+    waitFor: ['helm-deploy']
+
+  # Step 8: Get Service Details (FIXED - Added env variables)
+  - name: 'gcr.io/cloud-builders/kubectl'
+    env:
+      - 'CLOUDSDK_COMPUTE_ZONE=${_ZONE}'
+      - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER_NAME}'
+    args:
+      - 'get'
+      - 'service'
+      - 'myapp-service'
+      - '-n'
+      - '${_NAMESPACE}'
+      - '-o'
+      - 'wide'
+    id: 'get-service'
+    waitFor: ['verify-deployment']
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+  dynamic_substitutions: true
+
+timeout: '1800s'
