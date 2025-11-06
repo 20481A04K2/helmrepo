@@ -48,15 +48,14 @@ steps:
     id: 'get-credentials'
     waitFor: ['push-image']
 
-  # Step 5: Deploy Helm chart via Jumpbox VM (Fixed Logic)
+  # Step 5: Deploy Helm chart via Jumpbox VM
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         echo "Copying Helm chart to Jumpbox VM..."
-        # FIX: Copy the entire chart directory to /tmp/ on the VM.
-        gcloud compute scp --recurse helm/myapp vij1542044@jumpbox-cluster:/tmp/ \
+        gcloud compute scp --recurse helm/myapp vij1542044@jumpbox-cluster:/tmp/helm-myapp \
           --zone=asia-southeast1-c \
           --project=thematic-land-477215-a5 \
           --quiet \
@@ -77,17 +76,18 @@ steps:
               curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
               echo Preparing Helm directory...
-              # Chart is now reliably located at /tmp/myapp/
-              CHART_DIR=/tmp/myapp
+              mkdir -p /root/helm/myapp
+              cp -r /tmp/helm-myapp/* /root/helm/myapp/
+              chown -R root:root /root/helm/myapp
 
               echo Checking chart structure:
-              ls -R \${CHART_DIR}
+              ls -R /root/helm/myapp
 
               echo Helm version:
               helm version
 
               echo Deploying Helm chart...
-              cd \${CHART_DIR} # CD into the chart directory
+              cd /root/helm/myapp
               helm upgrade ${_HELM_RELEASE_NAME} . \
                 --install \
                 --create-namespace \
