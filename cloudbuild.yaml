@@ -48,63 +48,63 @@ steps:
     id: 'get-credentials'
     waitFor: ['push-image']
 
-  # Step 5: Deploy Helm chart via Jumpbox VM
-  - name: 'gcr.io/cloud-builders/gcloud'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        echo "Copying Helm chart to Jumpbox VM..."
-        gcloud compute scp --recurse helm/myapp vij1542044@jumpbox-cluster:/tmp/helm-myapp \
-          --zone=asia-southeast1-c \
-          --project=thematic-land-477215-a5 \
-          --quiet \
-          --ssh-flag="-o StrictHostKeyChecking=no" \
-          --ssh-flag="-o UserKnownHostsFile=/dev/null"
+# Step 5: Deploy Helm chart via Jumpbox VM (Modified)
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Copying Helm chart to Jumpbox VM..."
+        # 💡 FIX 1: Copy the entire directory 'helm/myapp' to '/tmp/' on the VM.
+        gcloud compute scp --recurse helm/myapp vij1542044@jumpbox-cluster:/tmp/ \
+          --zone=asia-southeast1-c \
+          --project=thematic-land-477215-a5 \
+          --quiet \
+          --ssh-flag="-o StrictHostKeyChecking=no" \
+          --ssh-flag="-o UserKnownHostsFile=/dev/null"
 
-        echo "Deploying Helm chart via Jumpbox VM..."
-        gcloud compute ssh vij1542044@jumpbox-cluster \
-          --zone=asia-southeast1-c \
-          --project=thematic-land-477215-a5 \
-          --quiet \
-          --ssh-flag="-o StrictHostKeyChecking=no" \
-          --ssh-flag="-o UserKnownHostsFile=/dev/null" \
-          --command "
-            set -e
-            sudo bash -c '
-              echo Installing Helm...
-              curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        echo "Deploying Helm chart via Jumpbox VM..."
+        gcloud compute ssh vij1542044@jumpbox-cluster \
+          --zone=asia-southeast1-c \
+          --project=thematic-land-477215-a5 \
+          --quiet \
+          --ssh-flag="-o StrictHostKeyChecking=no" \
+          --ssh-flag="-o UserKnownHostsFile=/dev/null" \
+          --command "
+            set -e
+            sudo bash -c '
+              echo Installing Helm...
+              curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-              echo Preparing Helm directory...
-              mkdir -p /root/helm/myapp
-              cp -r /tmp/helm-myapp/* /root/helm/myapp/
-              chown -R root:root /root/helm/myapp
+              echo Preparing Helm directory...
+              # 💡 REMOVE unnecessary copy, we can work directly in the copied chart directory
+              CHART_DIR=/tmp/myapp # 💡 NEW: Chart is now copied to /tmp/myapp/
 
-              echo Checking chart structure:
-              ls -R /root/helm/myapp
+              echo Checking chart structure:
+              ls -R \${CHART_DIR} # 💡 Use the correct path
 
-              echo Helm version:
-              helm version
+              echo Helm version:
+              helm version
 
-              echo Deploying Helm chart...
-              cd /root/helm/myapp
-              helm upgrade ${_HELM_RELEASE_NAME} . \
-                --install \
-                --create-namespace \
-                --namespace ${_NAMESPACE} \
-                --wait \
-                --timeout 10m \
-                --set image.repository=asia-southeast1-docker.pkg.dev/thematic-land-477215-a5/helm-demo-repo/myapp \
-                --set image.tag=$SHORT_SHA \
-                --set env.APP_VERSION=v1.0.0-$SHORT_SHA \
-                --kubeconfig /root/.kube/config \
-                --debug
+              echo Deploying Helm chart...
+              cd \${CHART_DIR} # 💡 CD into the correct chart directory
+              helm upgrade ${_HELM_RELEASE_NAME} . \
+                --install \
+                --create-namespace \
+                --namespace ${_NAMESPACE} \
+                --wait \
+                --timeout 10m \
+                --set image.repository=asia-southeast1-docker.pkg.dev/thematic-land-477215-a5/helm-demo-repo/myapp \
+                --set image.tag=$SHORT_SHA \
+                --set env.APP_VERSION=v1.0.0-$SHORT_SHA \
+                --kubeconfig /root/.kube/config \
+                --debug
 
-              echo Deployment complete!
-            '
-          "
-    id: 'helm-deploy'
-    waitFor: ['get-credentials', 'update-values']
+              echo Deployment complete!
+            '
+          "
+    id: 'helm-deploy'
+    waitFor: ['get-credentials', 'update-values']
 
   # Step 6: Verify deployment
   - name: 'gcr.io/cloud-builders/kubectl'
