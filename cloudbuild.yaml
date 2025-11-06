@@ -1,12 +1,11 @@
 substitutions:
   _REGION: asia-southeast1
-  _ZONE: us-central1-a
   _CLUSTER_NAME: helm-cluster
   _HELM_RELEASE_NAME: myapp-release
   _NAMESPACE: default
 
 steps:
-  # Step 1: Build Docker image (single tag)
+  # Step 1: Build Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -23,7 +22,7 @@ steps:
     id: 'push-image'
     waitFor: ['build-image']
 
-  # Step 3: Update values.yaml with project info
+  # Step 3: Update values.yaml
   - name: 'ubuntu'
     args:
       - 'bash'
@@ -35,8 +34,9 @@ steps:
         cat helm/myapp/values.yaml
     id: 'update-values'
 
+ 
 
-  # Step 5: Deploy Helm chart via Jumpbox VM
+  # Step 5: Deploy via Jumpbox VM
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
     args:
@@ -48,7 +48,7 @@ steps:
             set -e
             echo 'Installing Helm...'
             curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-            echo 'Helm version:' 
+            echo 'Helm version:'
             helm version
 
             echo 'Deploying Helm chart...'
@@ -68,13 +68,12 @@ steps:
             echo 'Deployment complete!'
           "
     id: 'helm-deploy'
-    waitFor: ['push-image', 'update-values', 'get-credentials']
-
+    waitFor: ['get-credentials', 'update-values']
 
   # Step 6: Verify deployment
   - name: 'gcr.io/cloud-builders/kubectl'
     env:
-      - 'CLOUDSDK_COMPUTE_ZONE=${_ZONE}'
+      - 'CLOUDSDK_COMPUTE_REGION=${_REGION}'
       - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER_NAME}'
     args:
       - 'get'
@@ -86,10 +85,10 @@ steps:
     id: 'verify-deployment'
     waitFor: ['helm-deploy']
 
-  # Step 7: Get LoadBalancer external IP
+  # Step 7: Get LoadBalancer IP
   - name: 'gcr.io/cloud-builders/kubectl'
     env:
-      - 'CLOUDSDK_COMPUTE_ZONE=${_ZONE}'
+      - 'CLOUDSDK_COMPUTE_REGION=${_REGION}'
       - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER_NAME}'
     args:
       - 'get'
