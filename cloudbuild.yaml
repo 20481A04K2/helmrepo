@@ -55,7 +55,7 @@ steps:
       - '-c'
       - |
         echo "Installing Helm and deploying via Jumpbox VM..."
-        gcloud compute ssh root@jumpbox-cluster \
+        gcloud compute ssh vij1542044@jumpbox-cluster \
           --zone=asia-southeast1-c \
           --project=thematic-land-477215-a5 \
           --quiet \
@@ -63,6 +63,8 @@ steps:
           --ssh-flag="-o UserKnownHostsFile=/dev/null" \
           --command "
             set -e
+
+            sudo su - root
             echo 'Installing Helm...'
             curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
             echo 'Helm version:'
